@@ -1,0 +1,74 @@
+import numpy as np
+from astropy.io import ascii
+from astropy.table import Table
+
+# This code is meant to convert GGchem-formatted static_conc.dat files to FastChem formatted output files
+
+# Reading in data
+data = ascii.read('Static_Conc_TP_HIGH_26_5.dat', header_start = 2, data_start = 3)
+
+# Reverse to FastChem order
+
+data.reverse()
+data['pgas'] = data['pgas']/1e6
+
+# Changing column names to FastChem keys
+
+data.rename_column('Tg', 'Tk')
+data.rename_column('nHges', 'n_H')
+data.rename_column('pgas', 'Pbar')
+data.rename_column('mu/amu', 'mu')
+data.rename_column('el', 'e_minus')
+
+# Converting values
+
+t = Table()
+rowtotals = np.zeros(len(data))
+
+# First convert out of log(10) values for relevant columns
+
+for i in np.arange(0,532):
+    col = data[i][:]
+    if i < 3: # no conversion for Tk, n_H or Pbar
+        pass
+    if i > 2 and i < 398: # from e_minus to the last species before the supersaturation ratios
+        for j in range(len(col)):
+            float_value = float(col[j])
+            power_value = 10**float_value
+            col[j] = power_value
+            rowtotals[j] += power_value # adding to total number density for the mixing ratios
+    if i > 397 and i < 456: # no action required for the superstaturation ratios
+        pass
+    if i > 455 and i < 514: # converting the condensates 
+        for j in range(len(col)):
+            float_value = float(col[j])
+            power_value = 10**float_value
+            col[j] = power_value
+            rowtotals[j] += power_value # again for the mixing ratios
+    if i == 531: # converting mu out of log(10) units. 
+        float_value = float(col[j])
+        power_value = 10**float_value
+        col[j] = power_value
+
+# Converting to mixing ratios, using the total of all number density row sums            
+            
+for i in np.arange(0,532):
+    col = data[i][:]
+    if i < 3: # Tk, n_H, Pbar
+        t.add_column(col)
+    if i > 2 and i < 398: # gas species
+        for j in range(len(col)):
+            col[j] = col[j]/rowtotals[j]
+        t.add_column(col)
+    if i > 397 and i < 456: # supersaturation ratios
+        pass
+    if i > 455 and i < 514: # condensates
+        for j in range(len(col)):
+            col[j] = col[j]/rowtotals[j]
+        t.add_column(col)
+    if i == 531:
+        t.add_column(col)
+    
+# Writing out to new file
+
+ascii.write(t, 'Frank_solabund_HIGH_mixing.dat', overwrite = True)
